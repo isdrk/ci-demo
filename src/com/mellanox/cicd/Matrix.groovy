@@ -154,20 +154,20 @@ def getArchConf(config, arch) {
 
     k8sArchConfTable['x86_64']  = [
         nodeSelector: 'kubernetes.io/arch=amd64',
-        jnlpImage: 'jenkins/inbound-agent:latest',
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        jnlpImage: 'dockerhub.nvidia.com/jenkins/inbound-agent:latest',
+        dockerImage: 'dockerhub.nvidia.com/docker:26-dind'
     ]
 
     k8sArchConfTable['aarch64'] = [
         nodeSelector: 'kubernetes.io/arch=arm64',
-        jnlpImage: "jenkins/inbound-agent:latest",
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        jnlpImage: "dockerhub.nvidia.com/jenkins/inbound-agent:latest",
+        dockerImage: 'dockerhub.nvidia.com/docker:26-dind'
     ]
 
     k8sArchConfTable['ppc64le'] = [
         nodeSelector: 'kubernetes.io/arch=ppc64le',
         jnlpImage: "${config.registry_host}/${config.registry_jnlp_path}/jenkins-ppc64le-agent-jnlp:latest",
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        dockerImage: 'dockerhub.nvidia.com/docker:26-dind'
     ]
 
     def aTable = getConfigVal(config, ['kubernetes', 'arch_table'], null)
@@ -757,6 +757,9 @@ def runK8(image, branchName, config, axis, steps=config.steps) {
     def tolerations = image.tolerations ?: getConfigVal(config, ['kubernetes', 'tolerations'], "[]")
     def yaml = """
 spec:
+  volumes:
+    - name: docker-certs
+      emptyDir: {}
   containers:
     - name: ${cname}
       resources:
@@ -765,6 +768,26 @@ spec:
       securityContext:
         capabilities:
           add: ${caps_add}
+      volumeMounts:
+        - name: docker-certs
+          mountPath: /certs
+    - name: docker
+      resources:
+        limits: ${limits}
+        requests: ${requests}
+      readinessProbe:
+        exec:
+          command:
+          - test
+          - -S
+          - /var/run/docker.sock
+        initialDelaySeconds: 5
+        periodSeconds: 5
+      ports:
+      - containerPort: 2375
+      volumeMounts:
+        - name: docker-certs
+          mountPath: /certs
   tolerations: ${tolerations}
 """
     podTemplate(
@@ -780,8 +803,31 @@ spec:
         name: pod_name,
         yaml: yaml,
         containers: [
-            containerTemplate(name: 'jnlp', image: k8sArchConf.jnlpImage, args: '${computer.jnlpmac} ${computer.name}'),
-            containerTemplate(privileged: privileged, name: cname, image: image.url, ttyEnabled: true, alwaysPullImage: true, command: 'cat')
+            containerTemplate(privileged: privileged, 
+                              name: 'docker', 
+                              image: k8sArchConf.dockerImage, 
+                              ttyEnabled: true, 
+                              alwaysPullImage: true, 
+                              runAsUser: '0', 
+                              command: 'dockerd', 
+                              args: '-H tcp://127.0.0.1:2375 -H unix:///var/run/docker.sock',
+                              envVars: [
+                                envVar(key: 'DOCKER_TLS_CERTDIR', value: '/certs')
+                              ]),
+            containerTemplate(name: 'jnlp', 
+                              image: k8sArchConf.jnlpImage, 
+                              args: '${computer.jnlpmac} ${computer.name}'),
+            containerTemplate(privileged: privileged, 
+                              name: cname, 
+                              image: image.url, 
+                              ttyEnabled: true, 
+                              alwaysPullImage: true, 
+                              command: 'cat',
+                              envVars: [
+                                envVar(key: 'DOCKER_HOST', value: 'tcp://localhost:2375'),
+                                envVar(key: 'DOCKER_TLS_CERTDIR', value: '/certs')
+                              ]
+                             )
         ],
         volumes: listV
     )
@@ -1212,6 +1258,14 @@ spec:
       resources:
         limits: ${limits}
         requests: ${requests}
+      readinessProbe:
+        exec:
+          command:
+          - test
+          - -S
+          - /var/run/docker.sock
+        initialDelaySeconds: 5
+        periodSeconds: 5
   tolerations: ${tolerations}
 """
     podTemplate(
@@ -1225,7 +1279,7 @@ spec:
         yaml: yaml,
         containers: [
             containerTemplate(name: 'jnlp', image: k8sArchConf.jnlpImage, args: '${computer.jnlpmac} ${computer.name}'),
-            containerTemplate(privileged: privileged, name: 'docker', image: k8sArchConf.dockerImage, ttyEnabled: true, alwaysPullImage: true, command: 'cat')
+            containerTemplate(privileged: privileged, name: 'docker', image: k8sArchConf.dockerImage, ttyEnabled: true, alwaysPullImage: true, runAsUser: '0')
         ],
         volumes: listV
     )
@@ -1236,8 +1290,6 @@ spec:
 
             container('docker') {
  //               stage ('Build Docker') {
-                    config.logger.debug("set symbolic link docker => podman (if doesn't exist)")
-                    sh 'type -p docker || ln -sfT $(type -p podman) /usr/bin/docker'
                     buildDocker(image, config)
  //               }
             }
