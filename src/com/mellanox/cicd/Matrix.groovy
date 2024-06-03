@@ -155,19 +155,19 @@ def getArchConf(config, arch) {
     k8sArchConfTable['x86_64']  = [
         nodeSelector: 'kubernetes.io/arch=amd64',
         jnlpImage: 'jenkins/inbound-agent:latest',
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        dockerImage: 'quay.io/buildah/stable:v1.35.4'
     ]
 
     k8sArchConfTable['aarch64'] = [
         nodeSelector: 'kubernetes.io/arch=arm64',
         jnlpImage: "jenkins/inbound-agent:latest",
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        dockerImage: 'quay.io/buildah/stable:v1.35.4'
     ]
 
     k8sArchConfTable['ppc64le'] = [
         nodeSelector: 'kubernetes.io/arch=ppc64le',
         jnlpImage: "${config.registry_host}/${config.registry_jnlp_path}/jenkins-ppc64le-agent-jnlp:latest",
-        dockerImage: 'quay.io/podman/stable:v5.0.2'
+        dockerImage: 'quay.io/buildah/stable:v1.35.4'
     ]
 
     def aTable = getConfigVal(config, ['kubernetes', 'arch_table'], null)
@@ -1265,7 +1265,7 @@ def build_docker_on_k8(image, config) {
     config.logger.trace(2, "build_docker_on_k8 for image ${image.name} | nodeSelector: ${nodeSelector}")
 
     def hostNetwork = image.hostNetwork ?: getConfigVal(config, ['kubernetes', 'hostNetwork'], false)
-    // Podman image should run in privileged mode (https://www.redhat.com/sysadmin/podman-inside-kubernetes)
+    // Buildah image should run in privileged mode
     def privileged = image.privileged ?: getConfigVal(config, ['kubernetes', 'privileged'], true)
     def limits = image.limits ?: getConfigVal(config, ['kubernetes', 'limits'], "{memory: 8Gi, cpu: 4000m}")
     def requests = image.requests ?: getConfigVal(config, ['kubernetes', 'requests'], "{memory: 8Gi, cpu: 4000m}")
@@ -1303,8 +1303,8 @@ spec:
 
             container('docker') {
  //               stage ('Build Docker') {
-                    config.logger.debug("set symbolic link docker => podman (if doesn't exist)")
-                    sh 'type -p docker || ln -sfT $(type -p podman) /usr/bin/docker'
+                    config.logger.debug("set symbolic link docker => buildah (if doesn't exist)")
+                    sh 'type -p docker || ln -sfT $(type -p buildah) /usr/bin/docker'
                     buildDocker(image, config)
  //               }
             }
