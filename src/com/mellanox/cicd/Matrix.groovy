@@ -1387,6 +1387,8 @@ spec:
                         // Also, for rare cases or none podman runs we dont fail the build.
                         sh 'rm /etc/containers/storage.conf ; podman system reset -f || true'
                         sh 'type -p docker || ln -sfT $(type -p podman) /usr/bin/docker'
+                        sh 'rm /usr/share/containers/storage.conf || true'
+                        sh 'podman info'
                         buildDocker(image, config)
                     }
                 }
