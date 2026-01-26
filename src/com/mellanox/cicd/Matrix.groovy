@@ -313,7 +313,7 @@ def matchMapEntry(filters, entry) {
 def unstashWS (name, config){
     def maxRetries = 5
     def lastError = null
-    
+
     for (int i = 1; i <= maxRetries; i++) {
         try {
             unstash name
@@ -326,7 +326,7 @@ def unstashWS (name, config){
             }
         }
     }
-    
+
     // If we get here, all retries failed
     reportFail('unstash', "Failed to unstash '${name}' after ${maxRetries} attempts. Last error: ${lastError.message}")
 }
@@ -1290,11 +1290,6 @@ def buildImage(config, image) {
 
     if ("${env.build_dockers}" == "true") {
         config.logger.info("Forcing building file per user request: ${filename} ... ")
-        need_build++
-    }
-    config.logger.debug("Changed files: ${changed_files}")
-    if (changed_files.contains(filename)) {
-        config.logger.info("Forcing building, by modified file: ${filename} ... ")
         need_build++
     }
 
